@@ -46,7 +46,7 @@ MineKB employs a RAG (Retrieval-Augmented Generation) architecture, combining ve
    - Generation of document embeddings using Alibaba Cloud Bailian API
 
 2. **Vector Storage**
-   - SeekDB 0.0.1.dev4 as an embedded vector database (accessed via Python subprocess)
+   - [seekdb-rs](https://github.com/ob-labs/seekdb-rs) embedded vector database (Rust native, no Python)
    - Native support for vector types and HNSW indexing for efficient vector retrieval
    - Project-level data isolation and transaction support
    - Vector column output and database existence validation
@@ -106,14 +106,12 @@ MineKB employs a RAG (Retrieval-Augmented Generation) architecture, combining ve
   - `@tauri-apps/api 1.5` - Frontend API library
   - `@tauri-apps/cli 1.5` - Command-line tools
   - Enabled features: `path-all`, `http-all`, `dialog-all`, `fs-all`, `shell-open`
-- **Python 3.8+** - SeekDB database operations (via subprocess communication)
 
 **Database**
-- **SeekDB 0.0.1.dev4** (Python) - AI-Native embedded vector database
+- **seekdb-rs** (Rust) - AI-Native embedded vector database, no Python dependency
   - Native support for vector types and HNSW indexing
   - Hybrid search and full-text search support
   - High-performance vector similarity computation
-  - Communication with Rust via JSON-RPC protocol
 
 ### Rust Core Dependencies
 
@@ -122,8 +120,7 @@ MineKB employs a RAG (Retrieval-Augmented Generation) architecture, combining ve
 - `docx-rs 0.4` - Word document processing
 
 **Data Storage**
-- `seekdb 0.0.1.dev4` (Python) - AI-Native embedded database with native vector indexing and HNSW retrieval
-- JSON communication protocol - Rust to Python subprocess communication
+- `seekdb-rs` (Rust) - AI-Native embedded database with native vector indexing and HNSW retrieval, no Python
 
 **Vector Computation**
 - SeekDB native vector indexing (HNSW) - Efficient vector similarity search
@@ -172,11 +169,11 @@ MineKB employs a RAG (Retrieval-Augmented Generation) architecture, combining ve
 
 ### Requirements
 
-- Node.js 16+
-- Rust 1.70+
-- Python 3.8+
+**Build / development environment** (for local dev or packaging):
 
-> **Note**: SeekDB currently only releases Linux builds. macOS support is coming soon. macOS users are recommended to use [UTM](https://mac.getutm.app) virtual machine manager to run [Ubuntu 20.x or later](https://mac.getutm.app/gallery/ubuntu-20-04).
+- Node.js 16+ (frontend and Tauri CLI)
+- Rust 1.70+ (Tauri backend)
+- No Python required (seekdb-rs is Rust-native)
 
 ### Install Dependencies
 
@@ -201,6 +198,9 @@ cp src-tauri/config.example.json src-tauri/config.json
 ```bash
 # Start development server
 tnpm run tauri:dev
+
+# 自定义数据目录时可设置环境变量 CONFIG_DIR
+CONFIG_DIR=/path/to/your/data tnpm run tauri:dev
 ```
 
 ### Build Application
@@ -234,7 +234,7 @@ cd src-tauri && cargo test
 - ✅ **HNSW Indexing**: Professional vector indexing algorithm for faster and more accurate retrieval
 - ✅ **AI-Native Features**: Built-in full-text search, hybrid search, and other AI capabilities
 - ✅ **Better Scalability**: Supports larger datasets and more complex queries
-- ✅ **Latest Version Features** (0.0.1.dev4): Vector column output, database validation, stable USE statement support
+- ✅ **seekdb-rs** (Rust): Embedded client, no Python dependency, vector column output and database validation
 
 ---
 

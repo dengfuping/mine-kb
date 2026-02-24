@@ -1,8 +1,10 @@
 use serde::{Deserialize, Serialize};
 use tauri::command;
+use tauri::State;
 use tauri::api::dialog::blocking::FileDialogBuilder;
 use std::path::Path;
 use std::fs;
+use crate::AppDataDirPath;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppStatusResponse {
@@ -26,6 +28,12 @@ pub struct FileInfo {
     pub path: String,
     pub name: String,
     pub size: u64,
+}
+
+/// 返回当前使用的应用数据目录（与后端一致；前端用于 temp 等路径）
+#[command]
+pub fn get_app_data_dir(app_data_dir: State<'_, AppDataDirPath>) -> Result<String, String> {
+    Ok(app_data_dir.0.clone())
 }
 
 #[command]

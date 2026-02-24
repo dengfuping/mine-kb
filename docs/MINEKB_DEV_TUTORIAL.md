@@ -490,16 +490,18 @@ sequenceDiagram
 
 ### 3.1 环境要求
 
-开发和运行 MineKB 需要以下环境：
+**构建/开发环境**（本地开发或打包时需要）：
 
 | 组件 | 版本要求 | 说明 |
 |-----|---------|------|
 | **操作系统** | Linux / macOS / Windows | 推荐 Ubuntu 20.04+ / macOS 10.15+ / Windows 10+ |
-| **Node.js** | 16.x+ | 用于前端开发，推荐 18.x LTS |
+| **Node.js** | 16.x+ | 前端构建与 Tauri CLI，推荐 18.x LTS |
 | **npm/tnpm** | 对应 Node.js 版本 | 阿里内部推荐使用 tnpm |
-| **Rust** | 1.70+ | Tauri 依赖，推荐 1.75+ |
-| **Python** | 3.8+ | SeekDB 依赖，推荐 3.9+ |
+| **Rust** | 1.70+ | Tauri 编译，推荐 1.75+ |
+| **Python** | 3.11+ | 应用首次运行时会用系统 python3 创建 venv 并安装 pyseekdb |
 | **系统依赖** | 根据平台 | 见下方说明 |
+
+**安装后运行环境**（用户机器）：仅需系统已安装 **Python 3**（建议 3.11+，且支持 `python3 -m venv`；Linux 需 `python3-venv`）。Node.js 和 Rust 不需要。
 
 #### Linux (Ubuntu/Debian) 系统依赖
 
@@ -619,17 +621,17 @@ sha2 = "0.10"
 #### Python 依赖（requirements.txt）
 
 ```txt
-seekdb==0.0.1.dev4
+pyseekdb
 ```
 
-**SeekDB 安装**：
+**pyseekdb 安装**（应用会在数据目录 venv 中自动安装；若需手动验证）：
 
 ```bash
 # 使用清华镜像源
-pip install seekdb==0.0.1.dev4 -i https://pypi.tuna.tsinghua.edu.cn/simple/
+pip install pyseekdb -i https://pypi.tuna.tsinghua.edu.cn/simple/
 
 # 验证安装
-python3 -c "import seekdb; print('SeekDB installed successfully')"
+python3 -c "import pyseekdb; print('pyseekdb OK')"
 ```
 
 ### 3.3 API 配置
@@ -681,9 +683,7 @@ npm install
 # 或使用 tnpm（阿里内部）
 tnpm install
 
-# 安装 Python 依赖
-pip install seekdb==0.0.1.dev4 -i https://pypi.tuna.tsinghua.edu.cn/simple/
-# 或使用安装脚本
+# Python 依赖由应用在首次运行时在 venv 中自动安装；亦可手动执行
 bash src-tauri/python/install_deps.sh
 
 # Rust 依赖会在编译时自动下载
@@ -702,11 +702,14 @@ nano src-tauri/config.json
 #### 3. 启动开发服务器
 
 ```bash
-# 启动 Tauri 开发模式
+# 启动 Tauri 开发模式（默认 CONFIG_DIR=com.mine-kb，数据目录为 src-tauri/com.mine-kb）
 npm run tauri:dev
 
 # 或使用 tnpm
 tnpm run tauri:dev
+
+# 自定义数据目录时可设置 CONFIG_DIR
+CONFIG_DIR=/path/to/your/data tnpm run tauri:dev
 ```
 
 **预期输出**：
@@ -715,13 +718,13 @@ tnpm run tauri:dev
    Compiling mine-kb v0.1.0 (/path/to/mine-kb/src-tauri)
     Finished dev [unoptimized + debuginfo] target(s) in 45.23s
      Running `target/debug/mine-kb`
-[2025-11-05T10:00:00Z INFO  mine_kb] 🚀 MineKB 启动中...
-[2025-11-05T10:00:00Z INFO  mine_kb] 📁 应用数据目录: /home/user/.local/share/com.mine-kb.app
-[2025-11-05T10:00:00Z INFO  mine_kb] 🐍 正在检查 Python 环境...
-[2025-11-05T10:00:01Z INFO  mine_kb] ✅ Python 环境准备完成
-[2025-11-05T10:00:01Z INFO  mine_kb] 🗄️ 正在初始化 SeekDB...
-[2025-11-05T10:00:02Z INFO  mine_kb] ✅ SeekDB 初始化成功
-[2025-11-05T10:00:02Z INFO  mine_kb] 🎉 MineKB 启动成功！
+[INFO  mine_kb] 🚀 MineKB 启动中...
+[INFO  mine_kb] 使用 CONFIG_DIR 指定数据目录
+[INFO  mine_kb] 🐍 正在检查 Python 环境...
+[INFO  mine_kb] ✅ Python 环境准备完成
+[INFO  mine_kb] ✅ pyseekdb 已安装
+[INFO  mine_kb] ✅ SeekDB 初始化成功
+[INFO  mine_kb] 🎉 MineKB 启动成功！
 ```
 
 #### 4. 构建生产版本（可选）
@@ -811,26 +814,22 @@ fn main() {
    - 输出到 stderr，便于调试
 
 2. **应用数据目录确定**
-   - macOS: `~/Library/Application Support/com.mine-kb.app/`
-   - Linux: `~/.local/share/com.mine-kb.app/`
-   - Windows: `%APPDATA%\com.mine-kb.app\`
+   - 若设置了环境变量 `CONFIG_DIR`，则以其值为数据根目录（本地开发默认 `CONFIG_DIR=com.mine-kb`，即 `src-tauri/com.mine-kb`）。
+   - 否则：macOS: `~/Library/Application Support/com.mine-kb.app/`；Linux: `~/.local/share/com.mine-kb.app/`；Windows: `%APPDATA%\com.mine-kb.app\`。
 
 3. **配置文件加载**
    - 首次运行时，从 `config.example.json` 复制
    - 读取 API Key、数据库路径等配置
 
 4. **Python 环境准备**
-   - 检查是否存在虚拟环境 `venv/`
-   - 如果不存在，创建虚拟环境
-   - 安装 `seekdb==0.0.1.dev4`
-   - 验证安装成功
+   - 在应用数据目录下检查是否存在虚拟环境 `venv/`
+   - 如果不存在，使用系统 `python3` 创建虚拟环境
+   - 在 venv 中安装 `pyseekdb` 并验证
 
 5. **SeekDB 初始化**
-   - 启动 Python 子进程（`seekdb_bridge.py`）
-   - 打开数据库实例（`oblite.open(db_path)`）
-   - 连接空字符串创建管理连接
-   - 执行 `CREATE DATABASE IF NOT EXISTS mine_kb`
-   - 切换到 `mine_kb` 数据库
+   - 启动 Python 子进程（`seekdb_bridge.py`，通过 pyseekdb 的 SeekdbEmbeddedClient）
+   - 在应用数据目录下打开/创建数据库
+   - 执行 `CREATE DATABASE IF NOT EXISTS mine_kb`（如需要）并连接 `mine_kb` 数据库
 
 6. **数据库架构创建**
    - 检查表是否存在
@@ -1565,9 +1564,7 @@ MineKB 项目的成功验证了 SeekDB 在桌面应用领域的巨大潜力。�
 ### A. 相关资源
 
 - **项目地址**：https://github.com/ob-labs/mine-kb
-- **SeekDB 文档**：[docs/SEEKDB_USAGE_GUIDE.md](SEEKDB_USAGE_GUIDE.md)
-- **迁移指南**：[docs/MIGRATION_SEEKDB.md](MIGRATION_SEEKDB.md)
-- **升级指南**：[docs/UPGRADE_SEEKDB_0.0.1.dev4.md](UPGRADE_SEEKDB_0.0.1.dev4.md)
+- **SeekDB / pyseekdb 文档**：[docs/seekdb.md](seekdb.md)
 
 ### B. 技术栈链接
 

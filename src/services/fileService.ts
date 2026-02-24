@@ -45,9 +45,14 @@ export async function saveFilesToTemp(files: File[]): Promise<string[]> {
   const filePaths: string[] = [];
 
   try {
-    // 确保临时目录存在
-    const appDir = await appDataDir();
-    const tempDir = await join(appDir, 'temp');
+    // 使用后端提供的应用数据目录（与后端一致，本地开发时为 src-tauri/com.mine-kb），临时目录为 tmp
+    let appDir: string;
+    try {
+      appDir = await invoke<string>('get_app_data_dir');
+    } catch {
+      appDir = await appDataDir();
+    }
+    const tempDir = await join(appDir, 'tmp');
 
     try {
       await createDir(tempDir, { recursive: true });

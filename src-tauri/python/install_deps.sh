@@ -59,15 +59,15 @@ fi
 echo "⬆️  Upgrading pip..."
 pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple/
 
-# Install seekdb
-echo "📦 Installing seekdb package..."
-pip install seekdb==0.0.1.dev4 -i https://pypi.tuna.tsinghua.edu.cn/simple/
+# Install pyseekdb (https://github.com/oceanbase/pyseekdb); embedded mode uses pylibseekdb (Linux + macOS Apple Silicon v1.1.0+)
+echo "📦 Installing pyseekdb package..."
+pip install pyseekdb -i https://pypi.tuna.tsinghua.edu.cn/simple/
 
 echo
 echo "✅ All dependencies installed successfully!"
 echo
 echo "To verify installation, run:"
-echo "  $VENV_DIR/bin/python3 -c 'import seekdb; print(\"SeekDB OK\")'"
+echo "  $VENV_DIR/bin/python3 -c 'import pyseekdb; print(\"pyseekdb OK\")'"
 echo
 echo "Note: The application will use this virtual environment automatically."
 

@@ -8,6 +8,7 @@ use mine_kb::services::python_env::PythonEnv;
 use mine_kb::services::seekdb_package::SeekDbPackage;
 use mine_kb::config::AppConfig;
 use mine_kb::app_state_wrapper::AppStateWrapper;
+use mine_kb::AppDataDirPath;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -263,11 +264,15 @@ fn main() {
             log::info!("  Setup: 快速准备（非阻塞）");
             log::info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             
-            // 获取应用数据目录
-            let app_data_dir = app
-                .path_resolver()
-                .app_data_dir()
-                .expect("Failed to get app data directory");
+            // 应用数据目录：优先使用环境变量 CONFIG_DIR（本地开发可设），否则使用系统应用数据目录（与 Build/安装逻辑一致）
+            let app_data_dir = std::env::var("CONFIG_DIR")
+                .ok()
+                .map(PathBuf::from)
+                .or_else(|| app.path_resolver().app_data_dir())
+                .expect("Failed to get app data directory (set CONFIG_DIR or use default)");
+            if std::env::var("CONFIG_DIR").is_ok() {
+                log::info!("使用 CONFIG_DIR 指定数据目录");
+            }
 
             // 确保数据目录存在
             if !app_data_dir.exists() {
@@ -275,14 +280,27 @@ fn main() {
                     .expect("Failed to create app data directory");
             }
 
-            // 创建数据库文件路径
+            // 创建 tmp 目录（上传等临时文件），与数据目录一致
+            let tmp_dir = app_data_dir.join("tmp");
+            if !tmp_dir.exists() {
+                fs::create_dir_all(&tmp_dir).expect("Failed to create tmp directory");
+            }
+
+            // 供前端获取（使 temp 等路径与后端一致）
+            let app_data_dir_str = app_data_dir
+                .to_str()
+                .expect("App data dir not UTF-8")
+                .to_string();
+            app.manage(AppDataDirPath(app_data_dir_str));
+
+            // 嵌入模式数据目录：.../com.mine-kb.app/mine_kb.db（pyseekdb 使用该路径作为实例目录，数据不再平铺在 app_data_dir）
             let db_path = app_data_dir.join("mine_kb.db");
             let db_path_str = db_path
                 .to_str()
                 .expect("Failed to convert database path to string")
                 .to_string();
 
-            log::info!("数据库文件路径: {}", db_path_str);
+            log::info!("数据库目录: {}", db_path_str);
 
             // 创建模型缓存目录
             let model_cache_dir = app_data_dir.join("models");
@@ -372,6 +390,7 @@ fn main() {
             chat::clear_messages,
             chat::rename_conversation,
             // System commands
+            system::get_app_data_dir,
             system::get_app_status,
             system::configure_llm_service,
             system::select_directory,
@@ -384,26 +403,51 @@ fn main() {
         .expect("error while running tauri application");
 }
 
-/// 加载应用配置
-fn load_app_config(app_data_dir: &PathBuf) -> Option<AppConfig> {
-    // 配置文件优先级：
-    // 1. 应用数据目录中的 config.json
-    // 2. 项目根目录的 config.json
-    // 3. 环境变量
-
-    let config_paths = vec![
-        app_data_dir.join("config.json"),
-        PathBuf::from("config.json"),
-        PathBuf::from("../config.json"),
+/// 开发时 src-tauri/config.json 的候选路径（tauri dev 时 cwd 可能是 target/debug，需多路径解析）
+fn dev_config_candidates() -> Vec<PathBuf> {
+    let mut candidates = vec![
+        PathBuf::from("src-tauri/config.json"),
+        PathBuf::from("../src-tauri/config.json"),
+        PathBuf::from("../../src-tauri/config.json"),
     ];
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(root) = exe.parent().and_then(|p| p.parent()).and_then(|p| p.parent()) {
+            candidates.push(root.join("src-tauri/config.json"));
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        let from_cwd = cwd.join("src-tauri/config.json");
+        if !candidates.contains(&from_cwd) {
+            candidates.push(from_cwd);
+        }
+    }
+    candidates
+}
+
+/// 加载应用配置
+/// 开发时优先使用 src-tauri/config.json；打包运行后使用应用数据目录中的 config.json。
+fn load_app_config(app_data_dir: &PathBuf) -> Option<AppConfig> {
+    let mut config_paths = dev_config_candidates();
+    config_paths.push(app_data_dir.join("config.json"));
+    config_paths.push(PathBuf::from("config.json"));
+    config_paths.push(PathBuf::from("../config.json"));
 
     for config_path in config_paths {
         if config_path.exists() {
             log::info!("尝试从配置文件读取: {:?}", config_path);
             match AppConfig::load_from_file(&config_path) {
                 Ok(config) => {
-                    log::info!("成功从配置文件读取配置: {:?}", config_path);
+                    let path_display = config_path.canonicalize().unwrap_or(config_path.clone());
+                    log::info!("当前使用的配置文件（LLM API Key 由此文件提供）: {}", path_display.display());
                     log::info!("  - Model: {}", config.llm.model);
+                    let key_preview = if config.llm.api_key.len() >= 12 {
+                        format!("{}***", &config.llm.api_key[..12])
+                    } else if config.llm.api_key.is_empty() {
+                        "(空)".to_string()
+                    } else {
+                        "***".to_string()
+                    };
+                    log::info!("  - API Key: {} (长度 {}，若 401 请编辑上方路径对应文件中的 llm.apiKey)", key_preview, config.llm.api_key.len());
                     log::info!("  - Max Tokens: {:?}", config.llm.max_tokens);
                     log::info!("  - Temperature: {:?}", config.llm.temperature);
                     if let Some(base_url) = &config.llm.base_url {

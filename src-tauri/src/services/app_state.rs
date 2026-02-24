@@ -166,6 +166,8 @@ impl AppState {
             )
         };
 
+        log::info!("[CHAT] LLM API Key (调试): {}", api_key);
+
         // 确定 Base URL
         let base_url = if let Some(url) = base_url_opt {
             log::info!("使用配置的 Base URL: {}", url);

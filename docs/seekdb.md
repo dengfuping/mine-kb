@@ -1,9 +1,6 @@
 # SeekDB 基础文档
 
-> **版本**: SeekDB 0.0.1.dev4  
-> **最后更新**: 2025-11-05
-
-> **重要更新**: 从 0.0.1.dev4 版本开始，模块名称从 `oblite` 更改为 `seekdb`。详见 [升级指南](UPGRADE_SEEKDB_0.0.1.dev4.md)
+> **当前 MineKB 使用**: [pyseekdb](https://github.com/oceanbase/pyseekdb)（`pip install pyseekdb`）。嵌入式模式支持 Linux 与 macOS Apple Silicon（依赖 pylibseekdb v1.1.0+），Python 3.11+。
 
 # 1. 产品目标
 
@@ -15,286 +12,82 @@
 
 ## 2.1 MineKB 应用自动安装
 
-MineKB 应用会在启动时**自动检查并安装** SeekDB 依赖库（oblite.so）。
+MineKB 应用会在启动时**自动检查并安装** pyseekdb：在应用数据目录下创建 Python venv，并在 venv 中执行 `pip install pyseekdb`。
 
 ### 应用数据目录位置
+
+默认（未设置 `CONFIG_DIR` 时）：
 
 - **macOS**: `~/Library/Application Support/com.mine-kb.app/`
 - **Linux**: `~/.local/share/com.mine-kb.app/`
 - **Windows**: `%APPDATA%\com.mine-kb.app\`
 
-### 手动安装（可选）
+pyseekdb 嵌入模式的数据目录为 **`{应用数据目录}/mine_kb.db/`**（子目录，不直接平铺在应用数据目录下）。配置、venv、tmp 等仍在应用数据目录根下。
 
-如果自动下载失败，可以手动安装：
+**通过环境变量指定**：若设置环境变量 **`CONFIG_DIR`**，则以其值为应用数据根目录。本地开发时可在项目内使用固定目录，例如：
 
 ```bash
-pip install seekdb==0.0.1.dev2 -i https://pypi.tuna.tsinghua.edu.cn/simple/
+# 开发时默认（package.json 中 tauri:dev 已设置）
+CONFIG_DIR=com.mine-kb
+
+# 或自定义绝对/相对路径
+CONFIG_DIR=/path/to/your/data
+```
+
+### 手动安装（可选）
+
+若应用内自动安装失败，可在应用数据目录的 venv 中手动安装：
+
+```bash
+# 进入应用数据目录下的 venv
+source "$CONFIG_DIR/venv/bin/activate"   # Linux/macOS
+# 或 %CONFIG_DIR%\venv\Scripts\activate  # Windows
+
+pip install pyseekdb -i https://pypi.tuna.tsinghua.edu.cn/simple/
 ```
 
 ### 验证安装
 
-查看应用日志，应该看到以下信息：
+查看应用日志，应看到类似信息：
 
 ```
-✅ oblite.so 存在，大小: XXXXX bytes
-✅ PYTHONPATH 已配置
+✅ pyseekdb 已安装
+✅ Python 环境和 SeekDB 准备完成
 ✅ SeekDB 数据库连接正常
-✅ 应用启动成功！
 ```
 
 ## 2.2 独立使用 SeekDB
 
 如果要在其他 Python 项目中使用 SeekDB：
 
-**方法一：通过 pip 安装（推荐）**
+**方法一：通过 pip 安装（推荐，当前 MineKB 使用）**
 
 ```bash
-pip install seekdb==0.0.1.dev4 -i https://pypi.tuna.tsinghua.edu.cn/simple/
+pip install pyseekdb -i https://pypi.tuna.tsinghua.edu.cn/simple/
 ```
 
-**方法二：直接下载（不推荐）**
-
-```bash
-# 注意：0.0.1.dev4 版本建议通过 pip 安装
-# 直接下载 .so 文件的方式不再推荐
-```
-
-**最简使用（0.0.1.dev4 版本）**
+用法请参阅 [pyseekdb 文档](https://github.com/oceanbase/pyseekdb)。嵌入式模式示例：
 
 ```python
-import seekdb
-seekdb.open() # 默认打开本地数据库目录 oblite.db（可自定义路径）
-conn = seekdb.connect() # 默认连接数据库 test
-cursor = conn.cursor()
-cursor.execute("create table t1(c1 int primary key, c2 int)")
-```
+from pyseekdb.client import SeekdbEmbeddedClient, AdminClient
 
-> **注意**: 从 0.0.1.dev4 版本开始，使用 `import seekdb` 而非 `import oblite`。
+client = SeekdbEmbeddedClient(path="/path/to/db_dir", database="mine_kb")
+conn = client.get_raw_connection()
+cursor = conn.cursor()
+# ...
+```
 
 # 3. AI Native
 
-## 3.1 向量检索
-
-```python
-import seekdb
-
-seekdb.open("./mine_kb.db")
-conn = seekdb.connect("test")
-cursor = conn.cursor()
-cursor.execute("create table test_vector(c1 int primary key, c2 vector(2), vector index idx1(c2) with (distance=l2, type=hnsw, lib=vsag))")
-
-cursor.execute("insert into test_vector values(1, [1, 1])")
-cursor.execute("insert into test_vector values(2, [1, 2])")
-cursor.execute("insert into test_vector values(3, [1, 3])")
-conn.commit()
-
-cursor.execute("SELECT c1 FROM test_vector ORDER BY l2_distance(c2, '[1, 2.5]') APPROXIMATE LIMIT 2;")
-print(cursor.fetchall())
-```
-
-## 3.2 全文检索
-
-```python
-import seekdb
-
-seekdb.open("./mine_kb.db")
-conn = seekdb.connect("test")
-cursor = conn.cursor()
-sql='''create table articles (title VARCHAR(200) primary key, body Text, 
-    FULLTEXT fts_idx(title, body));
-    '''
-cursor.execute(sql)
-
-sql='''insert into articles(title, body) values
-    ('OceanBase Tutorial', 'This is a tutorial about OceanBase Fulltext.'),
-    ('Fulltext Index', 'Fulltext index can be very useful.'),
-    ('OceanBase Test Case', 'Writing test cases helps ensure quality.')
-    '''
-cursor.execute(sql)
-conn.commit()
-
-sql='''select 
-	title,
-  match (title, body) against ("OceanBase") as score 
-from
-	articles
-where
-	match (title, body) against ("OceanBase")
-order by
-	score desc
-    '''
-cursor.execute(sql)
-print(cursor.fetchall())
-```
-
-## 3.3 混合检索
-
-待patch44x到轻量版功能
-
-```python
-import seekdb
-
-seekdb.open("./mine_kb.db")
-conn = seekdb.connect("test")
-cursor = conn.cursor()
-cursor.execute("create table doc_table(c1 int, vector vector(3), query varchar(255), content varchar(255), vector index idx1(vector) with (distance=l2, type=hnsw, lib=vsag), fulltext idx2(query), fulltext idx3(content))")
-
-sql = '''insert into doc_table values(1, '[1,2,3]', "hello world", "oceanbase Elasticsearch database"),
-                            (2, '[1,2,1]', "hello world, what is your name", "oceanbase mysql database"),
-                            (3, '[1,1,1]', "hello world, how are you", "oceanbase oracle database"),
-                            (4, '[1,3,1]', "real world, where are you from", "postgres oracle database"),
-                            (5, '[1,3,2]', "real world, how old are you", "redis oracle database"),
-                            (6, '[2,1,1]', "hello world, where are you from", "starrocks oceanbase database");'''
-cursor.execute(sql)
-conn.commit()
-
-sql = '''set @parm = '{
-      "query": {
-        "bool": {
-          "must": [
-            {"match": {"query": "hi hello"}},
-            {"match": { "content": "oceanbase mysql" }}
-          ]
-        }
-      },
-       "knn" : {
-          "field": "vector",
-          "k": 5,
-          "num_candidates": 10,
-          "query_vector": [1,2,3],
-          "boost": 0.7
-      },
-      "_source" : ["query", "content", "_keyword_score", "_semantic_score"]
-    }';'''
-cursor.execute(sql)
-sql = '''select dbms_hybrid_search.search('doc_table', @parm);'''
-cursor.execute(sql)
-print(cursor.fetchall())
-```
+向量检索、全文检索、混合检索等能力用法参见 [pyseekdb](https://github.com/oceanbase/pyseekdb) 文档。
 
 # 4. 分析能力(OLAP)
 
-## 4.1 数据导入
-
-```bash
-cat /data/1/example.csv
-1,10
-2,20
-3,30
-```
-
-
-
-```python
-import seekdb
-
-seekdb.open("./mine_kb.db")
-conn = seekdb.connect("test")
-cursor = conn.cursor()
-cursor.execute("create table test_olap(c1 int, c2 int)")
-cursor.execute("load data /*+ direct(true, 0) */ infile '/data/1/example.csv' into table test_olap fields terminated by ','")
-cursor.execute("select count(*) from test_olap")
-print(cursor.fetchall())
-```
-
-## 4.2 列存
-
-```python
-import seekdb
-
-seekdb.open("./mine_kb.db")
-conn = seekdb.connect("test")
-cursor = conn.cursor()
-sql='''create table each_column_group (col1 varchar(30) not null, col2 varchar(30) not null, col3 varchar(30) not null, col4 varchar(30) not null, col5 int) 
-    with column group (each column);
-    '''
-cursor.execute(sql)
-sql='''insert into each_column_group values('a', 'b', 'c', 'd', 1)
-    '''
-cursor.execute(sql)
-conn.commit()
-cursor.execute("select col1,col2 from each_column_group")
-print(cursor.fetchall())
-```
-
-## 4.3 物化视图
-
-```python
-import seekdb
-
-seekdb.open("./mine_kb.db")
-conn = seekdb.connect("test")
-cursor = conn.cursor()
-cursor.execute("create table base_t1(a int primary key, b int)")
-cursor.execute("create table base_t2(c int primary key, d int)") 
-cursor.execute("create materialized view log on base_t1 with(b)")
-cursor.execute("create materialized view log on base_t2 with(d)") 
-cursor.execute("create materialized view mv REFRESH fast START WITH sysdate() NEXT sysdate() + INTERVAL 1 second as select a,b,c,d from base_t1 join base_t2 on base_t1.a=base_t2.c")
-cursor.execute("insert into base_t1 values(1, 10)")
-cursor.execute("insert into base_t2 values(1, 100)")
-conn.commit()
-
-cursor.execute("select * from mv")
-print(cursor.fetchall())
-```
-
-## 4.4 外表
-
-```bash
-cat /data/1/example.csv
-1,10
-2,20
-3,30
-```
-
-
-
-```python
-import seekdb
-
-seekdb.open("./mine_kb.db")
-conn = seekdb.connect("test")
-cursor = conn.cursor()
-sql='''CREATE EXTERNAL TABLE test_external_table(c1 int, c2 int) LOCATION='/data/1' FORMAT=(TYPE='CSV' FIELD_DELIMITER=',') PATTERN='example.csv';
-'''
-cursor.execute(sql)
-cursor.execute("select * from test_external_table")
-print(cursor.fetchall())
-```
+数据导入、列存、物化视图、外表等用法参见 [pyseekdb](https://github.com/oceanbase/pyseekdb) 文档。
 
 # 5. 事务能力(OLTP)
 
-```python
-import seekdb
-
-# open db
-seekdb.open("./mine_kb.db")
-# get connect
-conn = seekdb.connect("test")
-# create table
-cursor = conn.cursor()
-cursor.execute("create table test_oltp(c1 int primary key, c2 int)")
-# insert
-cursor.execute("insert into test_oltp values(1, 10)")
-cursor.execute("insert into test_oltp values(2, 20)")
-cursor.execute("insert into test_oltp values(3, 30)")
-conn.commit()
-# select
-cursor.execute("select *,ORA_ROWSCN from test_oltp")
-print(cursor.fetchall())
-```
-
-**0.0.1.dev4 新特性：自动提交模式**
-
-```python
-import seekdb
-
-seekdb.open("./mine_kb.db")
-# 使用自动提交模式（无需手动 commit）
-conn = seekdb.connect("test", autocommit=True)
-cursor = conn.cursor()
-cursor.execute("insert into test_oltp values(4, 40)")  # 自动提交
-```
+事务与自动提交等用法参见 [pyseekdb](https://github.com/oceanbase/pyseekdb) 文档。
 
 # 6. 平滑切换至分布式版本
 

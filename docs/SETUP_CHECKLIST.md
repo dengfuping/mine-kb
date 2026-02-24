@@ -1,17 +1,20 @@
 # SeekDB Setup Checklist
 
-Follow these steps to set up the application with SeekDB support.
+Follow these steps to set up the application with pyseekdb (SeekDB) support.
 
 ## Prerequisites
 
-- [ ] Python 3.8 or higher installed
+**构建/开发环境**（仅开发或打包时需要）：
+
+- [ ] Python 3.11+ installed（应用首次运行时会用其创建 venv 并安装 pyseekdb）
   ```bash
   python3 --version
   ```
 
-- [ ] pip3 installed
+- [ ] pip3 / python3-venv（Linux 需 `sudo apt install python3-venv`）
   ```bash
   pip3 --version
+  python3 -m venv --help
   ```
 
 - [ ] Rust 1.70+ installed (for building)
@@ -19,18 +22,22 @@ Follow these steps to set up the application with SeekDB support.
   rustc --version
   ```
 
-- [ ] Node.js 16+ installed (for frontend)
+- [ ] Node.js 16+ installed (for frontend build)
   ```bash
   node --version
   ```
 
+**安装后运行环境**：用户机器仅需已安装 **Python 3**（建议 3.11+）。Node.js 和 Rust 不需要。
+
 ## Installation Steps
 
-### 1. Install SeekDB Python Package
+### 1. Install pyseekdb（可选，应用会自动安装）
+
+应用首次运行会在应用数据目录下创建 venv 并安装 pyseekdb。若需提前验证环境：
 
 ```bash
 # Using pip with Tsinghua mirror (recommended in China)
-pip3 install seekdb==0.0.1.dev2 -i https://pypi.tuna.tsinghua.edu.cn/simple/
+pip3 install pyseekdb -i https://pypi.tuna.tsinghua.edu.cn/simple/
 
 # Or using the installation script
 cd src-tauri/python
@@ -47,18 +54,9 @@ python3 test_seekdb.py
 Expected output:
 ```
 ============================================================
-SeekDB Installation Test
+pyseekdb Installation Test
 ============================================================
-Testing oblite import... ✅ OK
-
-Testing basic operations...
-  Creating database at /tmp/.../test.db... ✅
-  Creating table... ✅
-  Inserting data... ✅
-  Querying data... ✅
-  Closing connection... ✅
-
-✅ All basic operations passed!
+Testing pyseekdb import... ✅ OK
 ...
 ✅ All tests passed! SeekDB is ready to use.
 ============================================================
@@ -89,8 +87,11 @@ nano src-tauri/config.json
 ### 5. Build and Run
 
 ```bash
-# Development mode
+# Development mode（默认数据目录为 src-tauri/com.mine-kb，由 CONFIG_DIR=com.mine-kb 指定）
 npm run tauri:dev
+
+# 自定义数据目录
+CONFIG_DIR=/path/to/your/data npm run tauri:dev
 
 # Production build
 npm run tauri:build
@@ -102,28 +103,29 @@ If you have an existing SQLite database:
 
 ```bash
 cd src-tauri/python
-python3 migrate_sqlite_to_seekdb.py <old_sqlite_path> ./oblite.db
+python3 migrate_sqlite_to_seekdb.py <old_sqlite_path> <seekdb_path>
 ```
 
 Example:
 ```bash
 # macOS
-python3 migrate_sqlite_to_seekdb.py ~/Library/Application\ Support/mine-kb/mine_kb.db ./oblite.db
+python3 migrate_sqlite_to_seekdb.py ~/Library/Application\ Support/com.mine-kb.app/mine_kb.db ./seekdb.db
 
 # Linux
-python3 migrate_sqlite_to_seekdb.py ~/.local/share/mine-kb/mine_kb.db ./oblite.db
+python3 migrate_sqlite_to_seekdb.py ~/.local/share/com.mine-kb.app/mine_kb.db ./seekdb.db
 
 # Windows
-python3 migrate_sqlite_to_seekdb.py %APPDATA%\mine-kb\mine_kb.db .\oblite.db
+python3 migrate_sqlite_to_seekdb.py %APPDATA%\com.mine-kb.app\mine_kb.db .\seekdb.db
 ```
 
 ## Troubleshooting
 
-### Issue: "ModuleNotFoundError: No module named 'oblite'"
+### Issue: "ModuleNotFoundError: No module named 'pyseekdb'"
 
-**Solution:**
+**Solution:** 应用会在数据目录 venv 中自动安装；若失败可手动安装：
 ```bash
-pip3 install seekdb==0.0.1.dev2 -i https://pypi.tuna.tsinghua.edu.cn/simple/
+# 进入应用数据目录的 venv 后
+pip3 install pyseekdb -i https://pypi.tuna.tsinghua.edu.cn/simple/
 ```
 
 ### Issue: "Failed to start Python process"
@@ -134,9 +136,9 @@ pip3 install seekdb==0.0.1.dev2 -i https://pypi.tuna.tsinghua.edu.cn/simple/
    which python3
    ```
 
-2. Check if SeekDB is installed:
+2. Check if pyseekdb is installed (in app venv or system):
    ```bash
-   python3 -c "import oblite; print('OK')"
+   python3 -c "import pyseekdb; print('OK')"
    ```
 
 3. Check script permissions:
@@ -175,18 +177,16 @@ After setup, verify everything works:
 
 ## Getting Help
 
-- Check [MIGRATION_SEEKDB.md](MIGRATION_SEEKDB.md) for detailed migration guide
-- Check [MIGRATION_SUMMARY.md](MIGRATION_SUMMARY.md) for technical details
-- Check [docs/seekdb.md](docs/seekdb.md) for SeekDB documentation
+- Check [docs/seekdb.md](docs/seekdb.md) for SeekDB/pyseekdb documentation
 - Create an issue on GitHub
 
 ## Checklist Summary
 
-- [ ] Python 3.8+ installed
-- [ ] SeekDB package installed
-- [ ] Installation test passed
-- [ ] Application dependencies installed
-- [ ] Configuration file created
+- [ ] Python 3.11+ installed（运行环境必需；构建时亦需要 Node.js、Rust）
+- [ ] pyseekdb 可由应用自动安装或已手动安装
+- [ ] Installation test passed（可选：运行 `src-tauri/python/test_seekdb.py`）
+- [ ] Application dependencies installed（npm install）
+- [ ] Configuration file created（如 `src-tauri/config.json` 或应用数据目录下 config.json）
 - [ ] Application builds successfully
 - [ ] Application runs without errors
 - [ ] (If upgrading) Data migrated from SQLite

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-SeekDB Bridge - Python subprocess that handles database operations via JSON protocol
-Communicates with Rust via stdin/stdout using newline-delimited JSON
+SeekDB Bridge - Python subprocess that handles database operations via JSON protocol.
+Uses pyseekdb (https://github.com/oceanbase/pyseekdb). Embedded mode: Linux and macOS Apple Silicon (pylibseekdb v1.1.0+).
+Communicates with Rust via stdin/stdout using newline-delimited JSON.
 """
 
 import sys
@@ -12,37 +13,29 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime, date
 from decimal import Decimal
 
-# 尝试导入 seekdb，如果失败则提供详细的错误信息
+# Use pyseekdb; embedded mode uses SeekdbEmbeddedClient (pylibseekdb; Linux + macOS Apple Silicon)
 try:
-    import seekdb
+    import pyseekdb
+    from pyseekdb.client import SeekdbEmbeddedClient, AdminClient
 except ImportError as e:
-    print(f"[SeekDB Bridge] ❌ 无法导入 seekdb 模块", file=sys.stderr)
+    print(f"[SeekDB Bridge] ❌ 无法导入 pyseekdb 模块", file=sys.stderr)
     print(f"[SeekDB Bridge] 错误详情: {e}", file=sys.stderr)
-    print(f"[SeekDB Bridge] ", file=sys.stderr)
-    print(f"[SeekDB Bridge] 诊断信息:", file=sys.stderr)
-    print(f"[SeekDB Bridge] - Python 版本: {sys.version}", file=sys.stderr)
-    print(f"[SeekDB Bridge] - Python 路径: {sys.executable}", file=sys.stderr)
-    print(f"[SeekDB Bridge] - PYTHONPATH: {os.environ.get('PYTHONPATH', '(未设置)')}", file=sys.stderr)
-    print(f"[SeekDB Bridge] - sys.path: {sys.path}", file=sys.stderr)
-    print(f"[SeekDB Bridge] ", file=sys.stderr)
-    print(f"[SeekDB Bridge] 解决方法:", file=sys.stderr)
-    print(f"[SeekDB Bridge] 1. 确保 seekdb 包已安装", file=sys.stderr)
-    print(f"[SeekDB Bridge] 2. 通过 pip 安装: python -m pip install seekdb==0.0.1.dev4 -i https://pypi.tuna.tsinghua.edu.cn/simple", file=sys.stderr)
-    print(f"[SeekDB Bridge] 3. 检查虚拟环境是否正确激活", file=sys.stderr)
+    print(f"[SeekDB Bridge] 诊断信息: Python={sys.version}, executable={sys.executable}", file=sys.stderr)
+    print(f"[SeekDB Bridge] 请安装: python -m pip install pyseekdb -i https://pypi.tuna.tsinghua.edu.cn/simple", file=sys.stderr)
     sys.exit(1)
 except Exception as e:
-    print(f"[SeekDB Bridge] ❌ 加载 seekdb 模块时发生未知错误", file=sys.stderr)
-    print(f"[SeekDB Bridge] 错误详情: {e}", file=sys.stderr)
-    print(f"[SeekDB Bridge] Traceback:", file=sys.stderr)
+    print(f"[SeekDB Bridge] ❌ 加载 pyseekdb 时发生错误: {e}", file=sys.stderr)
     traceback.print_exc(file=sys.stderr)
     sys.exit(1)
 
 class SeekDBBridge:
     def __init__(self):
+        self._client = None  # SeekdbEmbeddedClient, keep ref so connection lives
         self.conn = None
         self.cursor = None
         self.db_path = None
         self.db_name = None
+        self.db_dir = None  # directory path for pyseekdb
         
     def log(self, msg: str):
         """Log to stderr (stdout is reserved for responses)"""
@@ -92,20 +85,40 @@ class SeekDBBridge:
             escaped = str(value).replace("'", "''")
             return f"'{escaped}'"
     
+    def _find_placeholder_pos(self, sql: str) -> int:
+        """Find position of the first ? that is not inside a single-quoted string (SQL '' = escaped quote)."""
+        i = 0
+        in_string = False
+        n = len(sql)
+        while i < n:
+            if sql[i] == "'":
+                if in_string and i + 1 < n and sql[i + 1] == "'":
+                    i += 2  # skip escaped ''
+                    continue
+                in_string = not in_string
+                i += 1
+                continue
+            if not in_string and sql[i] == "?":
+                return i
+            i += 1
+        return -1
+
     def build_sql_with_values(self, sql: str, values: List[Any]) -> str:
         """
-        Replace ? placeholders in SQL with actual values
-        ObLite doesn't support parameterized queries, so we embed values directly
+        Replace ? placeholders in SQL with actual values.
+        Only replaces ? that are not inside single-quoted strings, so content/embedding
+        containing ? or ' do not break substitution.
         """
         if not values:
             return sql
         
-        # Replace ? with actual values
         result = sql
         for value in values:
+            pos = self._find_placeholder_pos(result)
+            if pos < 0:
+                break
             formatted_value = self.format_sql_value(value)
-            # Replace the first occurrence of ?
-            result = result.replace("?", formatted_value, 1)
+            result = result[:pos] + formatted_value + result[pos + 1:]
         
         return result
     
@@ -128,61 +141,59 @@ class SeekDBBridge:
         })
     
     def handle_init(self, params: Dict[str, Any]):
-        """Initialize SeekDB connection"""
+        """Initialize SeekDB connection via pyseekdb (embedded mode)."""
         try:
             db_path = params.get("db_path", "./seekdb.db")
             db_name = params.get("db_name", "mine_kb")
-            
-            self.log(f"Initializing SeekDB: path={db_path}, db={db_name}")
-            
-            # Open database instance
-            seekdb.open(db_path)
-            
-            # Always ensure database exists before connecting
-            # Note: In seekdb 0.0.1.dev4, connect() will validate database existence
+
+            # 嵌入模式数据目录：固定为 path 所表示的目录（如 .../com.mine-kb.app/mine_kb.db），不平铺到父目录
+            db_dir = os.path.abspath(db_path)
+            if os.path.isfile(db_dir):
+                self.log(f"WARNING: path exists as file, renaming to {db_dir}.old")
+                try:
+                    os.rename(db_dir, db_dir + ".old")
+                except OSError:
+                    pass
+            if not os.path.isdir(db_dir):
+                os.makedirs(db_dir, exist_ok=True)
+
+            self.log(f"Initializing pyseekdb: path={db_path}, db_dir={db_dir}, db={db_name}")
+
             try:
-                self.log(f"Ensuring database '{db_name}' exists...")
-                # Connect to default "test" database to create new database
-                # SeekDB 0.0.1.dev4: connects to "test" by default when unspecified
-                admin_conn = seekdb.connect("test")
-                admin_cursor = admin_conn.cursor()
-                admin_cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
-                admin_conn.commit()
-                admin_conn.close()
-                self.log(f"✅ Database '{db_name}' created successfully")
-            except Exception as create_error:
-                self.log(f"❌ Error: Failed to create database: {create_error}")
-                self.log(f"Traceback: {traceback.format_exc()}")
-                # If database creation fails, raise exception to prevent connecting to non-existent database
-                raise Exception(f"Cannot create database '{db_name}': {create_error}")
-            
-            # Now connect to the database
-            self.conn = seekdb.connect(db_name)
-            self.log(f"✅ Connected to database '{db_name}'")
-            
+                # Create database if not exists (AdminClient for embedded path)
+                admin = AdminClient(path=db_dir)
+                try:
+                    admin.create_database(db_name)
+                    self.log(f"✅ Database '{db_name}' created")
+                except Exception as create_err:
+                    if "exist" not in str(create_err).lower() and "duplicate" not in str(create_err).lower():
+                        raise Exception(f"Cannot create database '{db_name}': {create_err}")
+                    self.log(f"Database '{db_name}' already exists")
+            except RuntimeError as re:
+                if "pylibseekdb" in str(re) or "not available" in str(re):
+                    self.log("Embedded mode requires pylibseekdb (Linux or macOS Apple Silicon v1.1.0+). Install pyseekdb which pulls pylibseekdb.")
+                raise
+
+            # Connect using embedded client and get raw connection for SQL
+            self._client = SeekdbEmbeddedClient(path=db_dir, database=db_name)
+            self.conn = self._client.get_raw_connection()
             self.cursor = self.conn.cursor()
             self.db_path = db_path
             self.db_name = db_name
-            
-            # Ensure we're using the correct database
-            try:
-                self.cursor.execute(f"USE `{db_name}`")
-                self.log(f"Switched to database '{db_name}'")
-            except Exception as use_error:
-                self.log(f"Warning: Failed to execute USE {db_name}: {use_error}")
-                # This might not be supported, continue anyway
-            
-            self.log("SeekDB initialized successfully")
+            self.db_dir = db_dir
+
+            self.log("pyseekdb initialized successfully")
             self.send_success({"db_path": db_path, "db_name": db_name})
-            
+
         except Exception as e:
             self.log(f"Init error: {e}")
             self.log(f"Traceback: {traceback.format_exc()}")
             error_details = (
                 f"数据库初始化失败\n"
-                f"路径: {params.get('db_path', './oblite.db')}\n"
+                f"路径: {params.get('db_path', './seekdb.db')}\n"
                 f"数据库名: {params.get('db_name', 'mine_kb')}\n"
-                f"错误: {str(e)}"
+                f"错误: {str(e)}\n"
+                f"说明: 嵌入式模式需 pylibseekdb（Linux 或 macOS Apple Silicon v1.1.0+）"
             )
             self.send_error("InitError", error_details)
     
@@ -341,11 +352,17 @@ class SeekDBBridge:
             self.log("Received interrupt signal, shutting down...")
         
         finally:
-            if self.conn:
+            if self._client is not None:
+                try:
+                    self._client._cleanup()
+                    self.log("Database connection closed")
+                except Exception:
+                    pass
+            elif self.conn is not None:
                 try:
                     self.conn.close()
                     self.log("Database connection closed")
-                except:
+                except Exception:
                     pass
 
 if __name__ == "__main__":

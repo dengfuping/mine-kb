@@ -1,50 +1,48 @@
 #!/usr/bin/env python3
 """
-测试 ObLite 数据库的 UPSERT 语法支持
+测试 SeekDB（pyseekdb）的 UPSERT 语法支持
+使用 pyseekdb，与 MineKB 应用一致。
 """
 import sys
 import os
+import tempfile
+import shutil
 
-# 添加父目录到 Python 路径
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# 添加 src-tauri/python 到路径
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src-tauri', 'python'))
 
 try:
-    import seekdb
-    print("✅ seekdb 模块加载成功")
+    from pyseekdb.client import SeekdbEmbeddedClient, AdminClient
+    print("✅ pyseekdb 模块加载成功")
 except ImportError as e:
-    print(f"❌ 无法导入 seekdb: {e}")
-    print(f"PYTHONPATH: {os.environ.get('PYTHONPATH', '(未设置)')}")
+    print(f"❌ 无法导入 pyseekdb: {e}")
+    print("  请安装: pip install pyseekdb -i https://pypi.tuna.tsinghua.edu.cn/simple/")
     sys.exit(1)
+
 
 def test_upsert_syntax():
     """测试不同的 UPSERT 语法"""
-    
-    # 创建临时测试数据库
-    test_db_path = "/tmp/test_seekdb_upsert.db"
+    test_dir = tempfile.mkdtemp(prefix="test_seekdb_upsert_")
     test_db_name = "test_upsert"
-    
-    print(f"\n📋 测试 SeekDB UPSERT 语法")
-    print(f"数据库路径: {test_db_path}")
+
+    print(f"\n📋 测试 SeekDB (pyseekdb) UPSERT 语法")
+    print(f"数据库目录: {test_dir}")
     print(f"数据库名: {test_db_name}")
-    
+
     try:
-        # 初始化数据库
-        seekdb.open(test_db_path)
-        print("✅ 数据库打开成功")
-        
-        # 创建数据库
-        admin_conn = seekdb.connect("")
-        admin_cursor = admin_conn.cursor()
-        admin_cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{test_db_name}`")
-        admin_conn.commit()
-        admin_conn.close()
-        print(f"✅ 数据库 '{test_db_name}' 已创建")
-        
-        # 连接到测试数据库
-        conn = seekdb.connect(test_db_name)
+        # 创建数据库（如需要）
+        admin = AdminClient(path=test_dir)
+        try:
+            admin.create_database(test_db_name)
+        except Exception as e:
+            if "exist" not in str(e).lower() and "duplicate" not in str(e).lower():
+                raise
+
+        client = SeekdbEmbeddedClient(path=test_dir, database=test_db_name)
+        conn = client.get_raw_connection()
         cursor = conn.cursor()
         print(f"✅ 已连接到数据库 '{test_db_name}'")
-        
+
         # 创建测试表
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS test_projects (
@@ -55,7 +53,7 @@ def test_upsert_syntax():
         """)
         conn.commit()
         print("✅ 测试表创建成功")
-        
+
         # 测试 1: 基本 INSERT
         print("\n📝 测试 1: 基本 INSERT")
         cursor.execute("INSERT INTO test_projects VALUES ('test-1', 'Project 1', 10)")
@@ -63,7 +61,7 @@ def test_upsert_syntax():
         cursor.execute("SELECT * FROM test_projects WHERE id = 'test-1'")
         result = cursor.fetchone()
         print(f"   结果: {result}")
-        
+
         # 测试 2: REPLACE INTO (MySQL 风格)
         print("\n📝 测试 2: REPLACE INTO")
         try:
@@ -75,7 +73,7 @@ def test_upsert_syntax():
             print(f"   结果: {result}")
         except Exception as e:
             print(f"   ❌ REPLACE INTO 不支持: {e}")
-        
+
         # 测试 3: ON DUPLICATE KEY UPDATE (MySQL 风格)
         print("\n📝 测试 3: ON DUPLICATE KEY UPDATE")
         try:
@@ -88,8 +86,7 @@ def test_upsert_syntax():
             result = cursor.fetchone()
             print(f"   ✅ ON DUPLICATE KEY UPDATE 语法支持！")
             print(f"   结果: {result}")
-            
-            # 再次执行以测试更新
+
             cursor.execute("""
                 INSERT INTO test_projects VALUES ('test-2', 'Project 2 Updated Again', 50)
                 ON DUPLICATE KEY UPDATE name = 'Project 2 Updated Again', value = 50
@@ -100,7 +97,7 @@ def test_upsert_syntax():
             print(f"   结果（更新后）: {result}")
         except Exception as e:
             print(f"   ❌ ON DUPLICATE KEY UPDATE 不支持: {e}")
-        
+
         # 测试 4: ON CONFLICT DO UPDATE (SQLite 风格)
         print("\n📝 测试 4: ON CONFLICT DO UPDATE")
         try:
@@ -115,8 +112,8 @@ def test_upsert_syntax():
             print(f"   结果: {result}")
         except Exception as e:
             print(f"   ❌ ON CONFLICT DO UPDATE 不支持: {e}")
-        
-        # 测试 5: INSERT ... ON CONFLICT DO UPDATE with excluded (SQLite 风格)
+
+        # 测试 5: INSERT ... ON CONFLICT DO UPDATE with excluded
         print("\n📝 测试 5: INSERT ... ON CONFLICT DO UPDATE with excluded")
         try:
             cursor.execute("""
@@ -133,26 +130,26 @@ def test_upsert_syntax():
             print(f"   结果: {result}")
         except Exception as e:
             print(f"   ❌ ON CONFLICT DO UPDATE with excluded 不支持: {e}")
-        
-        # 显示所有数据
+
         print("\n📊 最终数据:")
         cursor.execute("SELECT * FROM test_projects ORDER BY id")
         for row in cursor.fetchall():
             print(f"   {row}")
-        
-        # 清理
-        conn.close()
+
+        client._cleanup()
         print("\n✅ 测试完成")
-        
+
     except Exception as e:
         print(f"\n❌ 测试失败: {e}")
         import traceback
         traceback.print_exc()
         return False
-    
+    finally:
+        shutil.rmtree(test_dir, ignore_errors=True)
+
     return True
+
 
 if __name__ == "__main__":
     success = test_upsert_syntax()
     sys.exit(0 if success else 1)
-

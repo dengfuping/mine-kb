@@ -166,7 +166,7 @@ app.emit_all("startup-progress", StartupEvent::error(
 2. 前端显示 SplashScreen，监听启动事件
    ↓
 3. 后端发送事件：步骤 1 - 检查 SeekDB 依赖
-   ├─ 检查 oblite.so 是否存在
+   ├─ 检查 pyseekdb / pylibseekdb 是否可用
    ├─ 如不存在则自动下载
    └─ 成功 → 发送成功事件
    ↓
@@ -263,7 +263,7 @@ app.emit_all("startup-progress", StartupEvent::error(
 - 验证启动成功后自动隐藏
 
 ### 2. SeekDB 下载测试
-- 删除 `oblite.so`
+- 删除或重建 venv 中的 pyseekdb
 - 启动应用
 - 观察下载进度是否正常显示
 - 验证下载成功后继续启动
@@ -309,7 +309,7 @@ app.emit_all("startup-progress", StartupEvent::error(
 
 ## 相关文档
 
-- [SeekDB 自动安装文档](./SEEKDB_AUTO_INSTALL.md)
+- [SeekDB / pyseekdb 文档](./seekdb.md)
 - [应用配置指南](../README.md)
 
 ---
