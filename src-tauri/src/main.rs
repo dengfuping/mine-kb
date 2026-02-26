@@ -4,8 +4,6 @@
 
 use mine_kb::commands::{chat, documents, projects, system, speech, initialization};
 use mine_kb::services::app_state::AppState;
-use mine_kb::services::python_env::PythonEnv;
-use mine_kb::services::seekdb_package::SeekDbPackage;
 use mine_kb::config::AppConfig;
 use mine_kb::app_state_wrapper::AppStateWrapper;
 use mine_kb::AppDataDirPath;
@@ -33,7 +31,7 @@ impl StartupEvent {
     fn progress(step: u32, message: impl Into<String>) -> Self {
         Self {
             step,
-            total_steps: 3,
+            total_steps: 2,
             message: message.into(),
             status: "progress".to_string(),
             details: None,
@@ -44,7 +42,7 @@ impl StartupEvent {
     fn progress_with_details(step: u32, message: impl Into<String>, details: impl Into<String>) -> Self {
         Self {
             step,
-            total_steps: 3,
+            total_steps: 2,
             message: message.into(),
             status: "progress".to_string(),
             details: Some(details.into()),
@@ -55,7 +53,7 @@ impl StartupEvent {
     fn success(step: u32, message: impl Into<String>) -> Self {
         Self {
             step,
-            total_steps: 3,
+            total_steps: 2,
             message: message.into(),
             status: "success".to_string(),
             details: None,
@@ -66,7 +64,7 @@ impl StartupEvent {
     fn error(message: impl Into<String>, error: impl Into<String>) -> Self {
         Self {
             step: 0,
-            total_steps: 3,
+            total_steps: 2,
             message: message.into(),
             status: "error".to_string(),
             details: None,
@@ -93,98 +91,13 @@ async fn initialize_app_async(
     log::info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     
     // ============================================================
-    // 1. Python 环境和 SeekDB 安装
+    // 1. 配置文件加载
     // ============================================================
     log::info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    log::info!("  步骤 1/3: 初始化 Python 环境和 SeekDB");
+    log::info!("  步骤 1/2: 加载配置文件");
     log::info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     
-    let _ = app_handle.emit_all("startup-progress", StartupEvent::progress(1, "初始化 Python 环境"));
-    
-    // 创建 Python 虚拟环境
-    let python_env = match PythonEnv::new(&app_data_dir) {
-        Ok(env) => env,
-        Err(e) => {
-            log::error!("Python 环境初始化失败: {}", e);
-            let _ = app_handle.emit_all("startup-progress", StartupEvent::error(
-                "Python 环境初始化失败",
-                format!("{}", e)
-            ));
-            return;
-        }
-    };
-    
-    if let Err(e) = python_env.ensure_venv() {
-        log::error!("Python 虚拟环境创建失败: {}", e);
-        let _ = app_handle.emit_all("startup-progress", StartupEvent::error(
-            "Python 虚拟环境创建失败",
-            format!("{}", e)
-        ));
-        return;
-    }
-    
-    let _ = app_handle.emit_all("startup-progress", StartupEvent::progress(1, "检查 SeekDB 包"));
-    
-    // 检查并安装 SeekDB
-    let seekdb_pkg = SeekDbPackage::new(&python_env);
-    
-    match seekdb_pkg.is_installed() {
-        Ok(false) => {
-            log::info!("📦 SeekDB 未安装，开始安装...");
-            let _ = app_handle.emit_all("startup-progress", StartupEvent::progress_with_details(
-                1,
-                "安装 SeekDB",
-                "首次运行需要下载并安装 SeekDB（约3GB），可能需要几分钟..."
-            ));
-            
-            if let Err(e) = seekdb_pkg.install() {
-                log::error!("SeekDB 安装失败: {}", e);
-                let _ = app_handle.emit_all("startup-progress", StartupEvent::error(
-                    "SeekDB 安装失败",
-                    format!("{}", e)
-                ));
-                return;
-            }
-        }
-        Ok(true) => {
-            log::info!("✅ SeekDB 已安装");
-        }
-        Err(e) => {
-            log::warn!("⚠️  检查 SeekDB 安装状态失败，尝试安装: {}", e);
-            if let Err(e) = seekdb_pkg.install() {
-                log::error!("SeekDB 安装失败: {}", e);
-                let _ = app_handle.emit_all("startup-progress", StartupEvent::error(
-                    "SeekDB 安装失败",
-                    format!("{}", e)
-                ));
-                return;
-            }
-        }
-    }
-    
-    if let Err(e) = seekdb_pkg.verify() {
-        log::error!("SeekDB 验证失败: {}", e);
-        let _ = app_handle.emit_all("startup-progress", StartupEvent::error(
-            "SeekDB 验证失败",
-            format!("{}", e)
-        ));
-        return;
-    }
-    
-    let python_path = python_env.get_python_executable();
-    let python_path_str = python_path.to_str().expect("无法转换 Python 路径");
-    log::info!("✅ Python 可执行文件: {}", python_path_str);
-    
-    let _ = app_handle.emit_all("startup-progress", StartupEvent::success(1, "Python 环境和 SeekDB 准备完成"));
-
-    // ============================================================
-    // 2. 配置文件加载
-    // ============================================================
-    log::info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    log::info!("  步骤 2/3: 加载配置文件");
-    log::info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    
-    let _ = app_handle.emit_all("startup-progress", StartupEvent::progress(2, "加载配置文件"));
+    let _ = app_handle.emit_all("startup-progress", StartupEvent::progress(1, "加载配置文件"));
     
     let app_config = load_app_config(&app_data_dir);
 
@@ -205,30 +118,24 @@ async fn initialize_app_async(
         return;
     }
     
-    let _ = app_handle.emit_all("startup-progress", StartupEvent::success(2, "配置文件加载完成"));
+    let _ = app_handle.emit_all("startup-progress", StartupEvent::success(1, "配置文件加载完成"));
 
     // ============================================================
-    // 3. 初始化应用状态
+    // 2. 初始化应用状态
     // ============================================================
     log::info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    log::info!("  步骤 3/3: 初始化应用状态");
+    log::info!("  步骤 2/2: 初始化应用状态");
     log::info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     
     let _ = app_handle.emit_all("startup-progress", StartupEvent::progress_with_details(
-        3, 
+        2,
         "初始化应用状态",
         "正在初始化向量数据库和AI服务..."
     ));
     
     log::info!("开始初始化应用状态...");
     
-    let app_state_result = AppState::new_with_full_config(
-        &db_path_str, 
-        app_config, 
-        model_cache_dir_str,
-        Some(python_path_str)
-    )
-    .await;
+    let app_state_result = AppState::new_with_full_config(&db_path_str, app_config, model_cache_dir_str).await;
 
     match app_state_result {
         Ok(app_state) => {
@@ -240,7 +147,7 @@ async fn initialize_app_async(
             log::info!("  ✅ 应用启动成功！");
             log::info!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             
-            let _ = app_handle.emit_all("startup-progress", StartupEvent::success(3, "应用启动成功！"));
+            let _ = app_handle.emit_all("startup-progress", StartupEvent::success(2, "应用启动成功！"));
         }
         Err(e) => {
             log::error!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -279,6 +186,10 @@ fn main() {
                 fs::create_dir_all(&app_data_dir)
                     .expect("Failed to create app data directory");
             }
+            // 规范为绝对路径，供前端 fs scope 校验通过（$APPDATA 解析为绝对路径）
+            let app_data_dir = app_data_dir
+                .canonicalize()
+                .unwrap_or(app_data_dir);
 
             // 创建 tmp 目录（上传等临时文件），与数据目录一致
             let tmp_dir = app_data_dir.join("tmp");
@@ -286,15 +197,18 @@ fn main() {
                 fs::create_dir_all(&tmp_dir).expect("Failed to create tmp directory");
             }
 
-            // 供前端获取（使 temp 等路径与后端一致）
+            // 供前端获取（使 temp 等路径与后端一致；必须为绝对路径以匹配 tauri fs scope）
             let app_data_dir_str = app_data_dir
                 .to_str()
                 .expect("App data dir not UTF-8")
                 .to_string();
             app.manage(AppDataDirPath(app_data_dir_str));
 
-            // 嵌入模式数据目录：.../com.mine-kb.app/mine_kb.db（pyseekdb 使用该路径作为实例目录，数据不再平铺在 app_data_dir）
+            // 嵌入模式数据目录：.../com.mine-kb.app/mine_kb.db/（SeekDB 实例目录，数据集中在此目录下不再平铺在 app_data_dir）
             let db_path = app_data_dir.join("mine_kb.db");
+            if !db_path.exists() {
+                fs::create_dir_all(&db_path).expect("Failed to create SeekDB data directory");
+            }
             let db_path_str = db_path
                 .to_str()
                 .expect("Failed to convert database path to string")
@@ -391,6 +305,7 @@ fn main() {
             chat::rename_conversation,
             // System commands
             system::get_app_data_dir,
+            system::save_file_to_app_tmp,
             system::get_app_status,
             system::configure_llm_service,
             system::select_directory,

@@ -1,7 +1,0 @@
-# Python dependencies for SeekDB bridge
-# Install with: pip install -r requirements.txt
-
-# pyseekdb: unified SDK for SeekDB (embedded mode uses pylibseekdb; Linux + macOS Apple Silicon v1.1.0+)
-# https://github.com/oceanbase/pyseekdb
-pyseekdb
-

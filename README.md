@@ -163,7 +163,69 @@ MineKB employs a RAG (Retrieval-Augmented Generation) architecture, combining ve
 ## System Architecture
 
 ### Architecture Overview
-<img src="https://mdn.alipayobjects.com/huamei_ytl0i7/afts/img/A*wk6ST4g16wYAAAAAgFAAAAgAejCYAQ/original">
+
+```mermaid
+graph TB
+    subgraph Frontend["Frontend Layer"]
+        UI[React UI Components]
+        State[State Management]
+    end
+
+    subgraph Command["Command Layer (Tauri)"]
+        CMD_Project[Project Commands]
+        CMD_Doc[Document Commands]
+        CMD_Chat[Conversation Commands]
+        CMD_Speech[Speech Commands]
+    end
+
+    subgraph Service["Service Layer (Rust)"]
+        SVC_Project[ProjectService]
+        SVC_Doc[DocumentService]
+        SVC_Conv[ConversationService]
+        SVC_Embed[EmbeddingService]
+        SVC_LLM[LLMClient]
+        SVC_Speech[SpeechService]
+    end
+
+    subgraph Data["Data Layer"]
+        Adapter[SeekDbAdapter]
+        Client[seekdb-rs Client]
+        DB[(Embedded SeekDB)]
+        Tables[Relational Tables]
+        VectorColl[Vector Collection + HNSW]
+    end
+
+    subgraph External["External Services"]
+        DashScope[Aliyun Bailian API<br/>Embedding + LLM]
+    end
+
+    UI --> Command
+    State --> Command
+    CMD_Project --> SVC_Project
+    CMD_Doc --> SVC_Doc
+    CMD_Chat --> SVC_Conv
+    CMD_Speech --> SVC_Speech
+
+    SVC_Doc --> SVC_Embed
+    SVC_Conv --> SVC_LLM
+    SVC_Project --> Adapter
+    SVC_Doc --> Adapter
+    SVC_Conv --> Adapter
+
+    Adapter --> Client
+    Client --> DB
+    DB --> Tables
+    DB --> VectorColl
+
+    SVC_Embed --> DashScope
+    SVC_LLM --> DashScope
+```
+
+- **Frontend**: React + TypeScript; state and UI.
+- **Command Layer**: Tauri commands (project, document, conversation, speech) bridge frontend and Rust services.
+- **Service Layer**: ProjectService, DocumentService, ConversationService, EmbeddingService, LLMClient, SpeechService.
+- **Data Layer**: SeekDbAdapter uses **seekdb-rs** async Client to talk to embedded SeekDB (SQL + vector collection); no Python.
+- **External**: Aliyun Bailian API for embeddings and LLM.
 
 ## Quick Start
 
@@ -181,7 +243,7 @@ MineKB employs a RAG (Retrieval-Augmented Generation) architecture, combining ve
 # Install frontend dependencies
 npm install
 
-# Rust and Python dependencies are automatically installed during build
+# Rust dependencies are resolved at build time
 ```
 
 ### Configuration

@@ -352,7 +352,7 @@ npm run tauri dev
 
 ## 📚 参考文档
 
-- [SeekDB / pyseekdb 文档](./seekdb.md)
+- [SeekDB in MineKB](./seekdb.md)
 
 ---
 
