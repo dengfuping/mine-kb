@@ -163,11 +163,75 @@ MineKB 采用 RAG（Retrieval-Augmented Generation）架构，结合向量检索
 ## 系统架构
 
 ### 架构概览
-<img src="https://mdn.alipayobjects.com/huamei_ytl0i7/afts/img/A*Cuf4RoPSfwMAAAAAT-AAAAgAejCYAQ/original">
+
+```mermaid
+graph TB
+    subgraph Frontend["前端层"]
+        UI[React UI 组件]
+        State[状态管理]
+    end
+
+    subgraph Command["命令层 (Tauri)"]
+        CMD_Project[项目命令]
+        CMD_Doc[文档命令]
+        CMD_Chat[对话命令]
+        CMD_Speech[语音命令]
+    end
+
+    subgraph Service["服务层 (Rust)"]
+        SVC_Project[ProjectService]
+        SVC_Doc[DocumentService]
+        SVC_Conv[ConversationService]
+        SVC_Embed[EmbeddingService]
+        SVC_LLM[LLMClient]
+        SVC_Speech[SpeechService]
+    end
+
+    subgraph Data["数据层"]
+        Adapter[SeekDbAdapter]
+        Client[seekdb-rs Client]
+        DB[(嵌入式 SeekDB)]
+        Tables[关系表]
+        VectorColl[向量集合 + HNSW]
+    end
+
+    subgraph External["外部服务"]
+        DashScope[阿里云百炼 API<br/>Embedding + LLM]
+    end
+
+    UI --> Command
+    State --> Command
+    CMD_Project --> SVC_Project
+    CMD_Doc --> SVC_Doc
+    CMD_Chat --> SVC_Conv
+    CMD_Speech --> SVC_Speech
+
+    SVC_Doc --> SVC_Embed
+    SVC_Conv --> SVC_LLM
+    SVC_Project --> Adapter
+    SVC_Doc --> Adapter
+    SVC_Conv --> Adapter
+
+    Adapter --> Client
+    Client --> DB
+    DB --> Tables
+    DB --> VectorColl
+
+    SVC_Embed --> DashScope
+    SVC_LLM --> DashScope
+```
+
+- **前端**：React + TypeScript，负责状态与界面。
+- **命令层**：Tauri 命令（项目、文档、对话、语音）连接前端与 Rust 服务。
+- **服务层**：ProjectService、DocumentService、ConversationService、EmbeddingService、LLMClient、SpeechService。
+- **数据层**：SeekDbAdapter 通过 **seekdb-rs** 异步 Client 与嵌入式 SeekDB（SQL + 向量集合）通信，无 Python。
+- **外部**：阿里云百炼 API 提供 Embedding 与 LLM。
 
 ## 快速开始
 
 ### 环境要求
+
+**构建 / 开发环境**（本地开发或打包）：
 
 - Node.js 16+（前端与 Tauri CLI）
 - Rust 1.70+（Tauri 后端）
@@ -196,6 +260,9 @@ cp src-tauri/config.example.json src-tauri/config.json
 ```bash
 # 启动开发服务器
 tnpm run tauri:dev
+
+# 自定义数据目录时可设置环境变量 CONFIG_DIR
+CONFIG_DIR=/path/to/your/data tnpm run tauri:dev
 ```
 
 ### 构建应用
@@ -229,7 +296,7 @@ cd src-tauri && cargo test
 - ✅ **HNSW 索引**：专业的向量索引算法，检索更快更准
 - ✅ **AI-Native 特性**：内置全文检索、混合检索等 AI 能力
 - ✅ **更好的扩展性**：支持更大规模的数据和更复杂的查询
-- ✅ **seekdb-rs**：Rust 原生嵌入式客户端，无 Python 依赖，跨平台
+- ✅ **seekdb-rs**（Rust）：嵌入式客户端，无 Python 依赖，支持向量列输出与数据库存在性验证
 
 ---
 
